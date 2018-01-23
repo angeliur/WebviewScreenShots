@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">WebviewScreenShots</string>
+    <string name="webview_screenshots">webview截图</string>
+    <string name="webview_use">webview使用</string>
+    <string name="webview_local">加载本地webview</string>
+</resources>

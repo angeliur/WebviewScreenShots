@@ -1,0 +1,70 @@
+Hybrid App 中网页部分的分享方式越来越趋向于多元化，比较常见的用户操作方式有：复制网页链接式，直接选择目标应用自动分享式等。其中，截图行为，越来越成为丰富用户操作、备受用户喜爱的互动方式之一，我们在很多内容社区类应用中都能看到这种功能。这篇文章总结一下 Android 应用中 WebView 截图的实现方式。
+
+WebView 作为一种特殊的控件，自然不能像其他系统 View 或者截屏的方式来获取截图（多为截取长图）。如：
+
+public static Bitmap getScreenShot(View view) {
+    View screenView = view.getRootView();
+    screenView.setDrawingCacheEnabled(true);
+    Bitmap bitmap = Bitmap.createBitmap(screenView.getDrawingCache());
+    screenView.setDrawingCacheEnabled(false);
+    return bitmap;
+}
+如果将上述代码套在 WebView 上使用，将会得到内容不完整的截图。而事实上，WebView 系统本身提供有对应的 API 来获取 Bitmap 对象。
+
+private Bitmap captureWebView(WebView webView) {
+    Picture picture = webView.capturePicture();
+    int width = picture.getWidth();
+    int height = picture.getHeight();
+    if (width > 0 && height > 0) {
+      Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
+      Canvas canvas = new Canvas(bitmap);
+      picture.draw(canvas);
+      return bitmap;
+    }
+    return null;
+}
+获取到 Bitmap 对象后，利用这段代码可以将其保存到设备的存储卡中：
+
+private void saveBitmap(Bitmap bitmap) {
+    File file = new File(Environment.getExternalStorageDirectory(), System.currentTimeMillis() + ".jpg");
+    try {
+      FileOutputStream fos = new FileOutputStream(file);
+      bitmap.compress(CompressFormat.JPEG, 80, fos);
+      fos.flush();
+      fos.close();
+    } catch (java.io.IOException e) {
+      e.printStackTrace();
+    }
+}
+简单两步，大功告成。然而当你在 Android 5.0 及更高版本系统的设备中操作时，你会发现，截图显示并不完全。虽然图片宽高符合实际要求，但是内容只包含当前屏幕显示区域内 WebView 的内容。
+
+原因在于，为了减少内存占用和提升性能，从 Android 5.0 开始，系统能够智能化地选择部分 Html 文档进行渲染。所以，默认情况下，我们只能截取到部分屏幕显示区域内 WebView 的内容，也就出现了上述问题。
+
+不过，系统也提供了对应的 API 来修改这一默认优化行为。代码很简单：
+
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+    WebView.enableSlowWholeDocumentDraw();
+}
+需要注意的是，这段代码必须添加在 WebView 实例被创建之前。如果使用 Activity 的话，也就是在 setContentView() 方法前面。
+
+虽然 capturePicture() 方法已经能够获取 WebView 截图，但是到 API 19 时该方法被系统废弃掉了。取而代之的是使用 onDraw() 方法获取获取 Bitmap 对象。
+
+private Bitmap captureWebView(WebView webView) {
+    float scale = webView.getScale();
+    int width = webView.getWidth();
+    int height = (int) (webView.getHeight() * scale);
+    Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
+    Canvas canvas = new Canvas(bitmap);
+    webView.draw(canvas);
+    return bitmap;
+}
+这里又要提到的是，getScale() 方法从 API 17 开始也被系统废弃掉了。所以获取 scale 值的另一种更优雅的方式是：
+
+webView.setWebViewClient(new WebViewClient() {
+  @Override
+  public void onScaleChanged(WebView view, float oldScale, float newScale) {
+    super.onScaleChanged(view, oldScale, newScale);
+    scale = newScale;
+  }
+});
+最后一点，在实际使用过程中，我们还需要考虑到 Bitmap 的内存占用问题，做好异常捕获，防止 OOM 的出现。
